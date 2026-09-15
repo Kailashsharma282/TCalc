@@ -31,6 +31,10 @@ export class IgnoreResolver {
   async loadIgnoreFiles(rootPath: string): Promise<void> {
     const files = [...IGNORE_FILE_NAMES, ...(this.options.additionalIgnoreFiles ?? [])];
     for (const fileName of files) {
+      if (path.isAbsolute(fileName) || fileName.split(/[\\/]/).includes("..")) {
+        this.options.onWarning?.(`Skipped ignore file outside workspace: ${fileName}`);
+        continue;
+      }
       try {
         const content = await readFile(path.join(rootPath, fileName), "utf-8");
         this.ig.add(content);
