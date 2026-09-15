@@ -105,8 +105,11 @@ function isSecretFile(relativePath: string): boolean {
 }
 
 function isGeneratedFile(relativePath: string): boolean {
-  const ext = path.extname(relativePath);
-  if (GENERATED_EXTENSIONS.has(ext)) return true;
+  const normalized = relativePath.replace(/\\/g, "/").toLowerCase();
+  for (const suffix of GENERATED_EXTENSIONS) {
+    if (normalized.endsWith(suffix)) return true;
+  }
+  if (normalized.includes(".min.") || normalized.includes(".bundle.")) return true;
   return false;
 }
 

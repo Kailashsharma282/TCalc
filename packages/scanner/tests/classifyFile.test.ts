@@ -65,7 +65,7 @@ describe("classifyFile", () => {
 
   it("should classify generated extensions", () => {
     const result = classifyFile("script.min.js", 1000);
-    expect(result.isGenerated).toBe(false);
+    expect(result.isGenerated).toBe(true);
   });
 
   it("should detect database-dump risk", () => {
