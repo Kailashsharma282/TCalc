@@ -39,9 +39,19 @@ const GOAL_DIFFICULTY: Record<WorkspaceGoal, number> = {
 export function recommendModels(options: RecommendModelsOptions): RecommendationResult {
   const { models, workspaceTokens, goal, outputTokens: optOutputTokens, privacyMode = "local-first", budget } = options;
 
+  if (!Number.isFinite(workspaceTokens) || workspaceTokens < 0) {
+    throw new RangeError(`workspaceTokens must be a finite number >= 0 (got ${workspaceTokens})`);
+  }
+  if (budget !== undefined && (!Number.isFinite(budget) || budget < 0)) {
+    throw new RangeError(`budget must be a finite number >= 0 (got ${budget})`);
+  }
+  if (optOutputTokens !== undefined && (!Number.isFinite(optOutputTokens) || optOutputTokens <= 0)) {
+    throw new RangeError(`outputTokens must be a finite number > 0 (got ${optOutputTokens})`);
+  }
+
   const contextTokens = budget === undefined ? workspaceTokens : Math.min(workspaceTokens, budget);
   const contextNeeded = Math.round(contextTokens * 1.2);
-  const outputTokens = optOutputTokens ?? DEFAULT_OUTPUT_TOKENS[goal];
+  const outputTokens = optOutputTokens ?? DEFAULT_OUTPUT_TOKENS[goal] ?? 4000;
 
   const assumptions: string[] = [
     `Output tokens estimated for "${goal}" goal: ${outputTokens}`,
