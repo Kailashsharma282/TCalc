@@ -39,8 +39,10 @@ export async function executeReport(options: ReportOptions): Promise<string> {
         goal,
         privacyMode: privacy,
       });
-    } catch {
-      // proceed without recommendations
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      scanResult.warnings.push(`Recommendations unavailable: ${reason}`);
+      if (options.debug) console.warn(`Recommendation failed: ${reason}`);
     }
   }
 
