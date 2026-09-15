@@ -23,8 +23,11 @@ export function loadModelCatalog(
 
     return parseModelCatalog(parsed);
   } catch (error) {
-    console.error(`Failed to load model catalog:`, error);
-    return { version: "1.0", updatedAt: new Date().toISOString().split("T")[0], models: [] };
+    if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
+      if (options.warnIfMissing !== false) console.warn(`Catalog file not found: ${catalogDirOrFile}`);
+      return { version: "1.0", updatedAt: new Date().toISOString().split("T")[0], models: [] };
+    }
+    throw error;
   }
 }
 
