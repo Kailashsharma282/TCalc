@@ -69,6 +69,7 @@ export function createServer(): Server {
               rootPath: { type: "string", description: "Root path to scan (defaults to current working directory)" },
               goal: { type: "string", enum: [...WORKSPACE_GOALS], description: "Workspace goal included in the summary" },
               privacyMode: { type: "string", enum: [...PRIVACY_SETTINGS] },
+              timeoutMs: { type: "integer", minimum: 1, maximum: 300000, description: "Scan timeout in milliseconds (default 60000, max 300000)" },
             },
           },
         },
