@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { IgnoreResolver } from "../src/ignoreResolver.js";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync, rmSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -74,5 +74,39 @@ describe("IgnoreResolver", () => {
     const resolver = new IgnoreResolver({ additionalIgnoreFiles: [".customignore"] });
     await resolver.loadIgnoreFiles(tmpDir);
     expect(resolver.shouldIgnore("secrets/key.txt", 100).ignored).toBe(true);
+  });
+
+  it("should reject absolute and parent-traversing ignore file entries", async () => {
+    const warnings: string[] = [];
+    const resolver = new IgnoreResolver({
+      additionalIgnoreFiles: ["../outside.ignore", "/abs.ignore"],
+      onWarning: (w) => warnings.push(w),
+    });
+    await resolver.loadIgnoreFiles(tmpDir);
+    expect(warnings.some((w) => w.includes("Skipped ignore file outside workspace"))).toBe(true);
+  });
+
+  it("should not follow a safe-looking ignore filename that symlinks outside the workspace", async () => {
+    const outsideDir = mkdtempSync(join(tmpdir(), "wma-outside-"));
+    try {
+      const outsideFile = join(outsideDir, "evil.ignore");
+      writeFileSync(outsideFile, "should-be-ignored-by-evil/*\n");
+      const linkName = ".evilignore";
+      try {
+        symlinkSync(outsideFile, join(tmpDir, linkName));
+      } catch {
+        return; // symlink privileges unavailable (e.g. Windows CI) — skip
+      }
+      const warnings: string[] = [];
+      const resolver = new IgnoreResolver({
+        additionalIgnoreFiles: [linkName],
+        onWarning: (w) => warnings.push(w),
+      });
+      await resolver.loadIgnoreFiles(tmpDir);
+      expect(resolver.shouldIgnore("should-be-ignored-by-evil/file.txt", 100).ignored).toBe(false);
+      expect(warnings.some((w) => w.includes("Skipped ignore file outside workspace"))).toBe(true);
+    } finally {
+      rmSync(outsideDir, { recursive: true, force: true });
+    }
   });
 });

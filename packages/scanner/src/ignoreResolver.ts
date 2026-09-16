@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, realpath } from "node:fs/promises";
 import path from "node:path";
 import ignore from "ignore";
 import { DEFAULT_FILE_SIZE_CONFIG } from "@wma/core";
@@ -30,18 +30,34 @@ export class IgnoreResolver {
 
   async loadIgnoreFiles(rootPath: string): Promise<void> {
     const files = [...IGNORE_FILE_NAMES, ...(this.options.additionalIgnoreFiles ?? [])];
+    // Canonical root for symlink containment (falls back if root is missing).
+    const canonicalRoot = await realpath(rootPath).catch(() => path.resolve(rootPath));
     for (const fileName of files) {
       if (path.isAbsolute(fileName) || fileName.split(/[\\/]/).includes("..")) {
         this.options.onWarning?.(`Skipped ignore file outside workspace: ${fileName}`);
         continue;
       }
+      const candidate = path.join(rootPath, fileName);
+      // Resolve symlinks and verify the real target stays inside the workspace.
+      // Missing files preserve existing silent ENOENT handling.
       try {
-        const content = await readFile(path.join(rootPath, fileName), "utf-8");
-        this.ig.add(content);
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-          this.options.onWarning?.(`Failed to read ignore file ${fileName}: ${error instanceof Error ? error.message : String(error)}`);
+        const resolvedCandidate = await realpath(candidate);
+        const relative = path.relative(canonicalRoot, resolvedCandidate);
+        if (path.isAbsolute(relative) || relative === ".." || relative.startsWith(`..${path.sep}`) || relative.startsWith("../")) {
+          this.options.onWarning?.(`Skipped ignore file outside workspace: ${fileName}`);
+          continue;
         }
+        try {
+          const content = await readFile(resolvedCandidate, "utf-8");
+          this.ig.add(content);
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+            this.options.onWarning?.(`Failed to read ignore file ${fileName}: ${error instanceof Error ? error.message : String(error)}`);
+          }
+        }
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+        this.options.onWarning?.(`Failed to read ignore file ${fileName}: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
     if (this.options.userExcludePatterns) {
