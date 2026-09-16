@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, stat, symlink, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { scanWorkspace } from "../src/scanWorkspace.js";
@@ -110,6 +110,42 @@ describe("scanWorkspace traversal", () => {
     expect(vendor?.included).toBe(false);
     expect(vendor?.estimatedTokens).toBeGreaterThan(0);
     expect(result.includedTokens).toBe(index?.estimatedTokens);
+  });
+
+  it("discards legacy v1 caches so post-4KB secrets are rescanned and excluded", async () => {
+    const root = await tempDirectory("tcalc-legacy-cache-");
+    const fileName = "late-secret.ts";
+    const filePath = path.join(root, fileName);
+    const content = `${"a".repeat(5000)}\napi_key = "12345678901234567890"\n`;
+    await writeFile(filePath, content);
+    const fileStat = await stat(filePath);
+    const cacheFile = path.join(root, ".cache", "scan.json");
+    await mkdir(path.dirname(cacheFile), { recursive: true });
+    // Legacy preview-only cache entry: same bytes/mtime but no secret flag.
+    const legacy = {
+      version: 1,
+      tokenizerKey: "heuristic-v1",
+      files: {
+        [fileName]: {
+          bytes: Number(fileStat.size),
+          mtimeMs: fileStat.mtimeMs,
+          estimatedTokens: 10,
+          riskFlags: [],
+        },
+      },
+    };
+    await writeFile(cacheFile, JSON.stringify(legacy), "utf8");
+
+    const result = await scanWorkspace({ rootPath: root, cacheFile });
+
+    const scanned = result.files.find((f) => f.relativePath === fileName);
+    expect(scanned).toBeDefined();
+    expect(scanned!.riskFlags).toContain("secret");
+    expect(scanned!.included).toBe(false);
+    // Legacy entry must not be reused as a cache hit.
+    expect(result.cacheHits ?? 0).toBe(0);
+    const persisted = JSON.parse(await readFile(cacheFile, "utf8"));
+    expect(persisted.version).toBe(2);
   });
 });
 

@@ -10,16 +10,21 @@ export interface ScanCacheEntry {
 }
 
 interface ScanCacheFile {
-  version: 1;
+  version: 2;
   tokenizerKey: string;
   files: Record<string, ScanCacheEntry>;
 }
+
+export const SCAN_CACHE_VERSION = 2;
 
 export async function loadScanCache(cacheFile: string | undefined, tokenizerKey: string): Promise<Map<string, ScanCacheEntry>> {
   if (!cacheFile) return new Map();
   try {
     const parsed = JSON.parse(await readFile(cacheFile, "utf8")) as ScanCacheFile;
-    if (parsed.version !== 1 || parsed.tokenizerKey !== tokenizerKey || !parsed.files) return new Map();
+    // Version 1 caches were produced by preview-only secret detection and may
+    // mark files with post-4KB secrets as included. Discard them so every
+    // unchanged file receives one full-text scan after upgrade.
+    if (parsed.version !== SCAN_CACHE_VERSION || parsed.tokenizerKey !== tokenizerKey || !parsed.files) return new Map();
     return new Map(Object.entries(parsed.files));
   } catch {
     return new Map();
@@ -30,7 +35,7 @@ export async function saveScanCache(cacheFile: string | undefined, tokenizerKey:
   if (!cacheFile) return;
   await mkdir(path.dirname(cacheFile), { recursive: true });
   const temporary = `${cacheFile}.${process.pid}.tmp`;
-  const payload: ScanCacheFile = { version: 1, tokenizerKey, files: Object.fromEntries(files) };
+  const payload: ScanCacheFile = { version: SCAN_CACHE_VERSION, tokenizerKey, files: Object.fromEntries(files) };
   await writeFile(temporary, JSON.stringify(payload), "utf8");
   await rename(temporary, cacheFile).catch(async () => {
     await writeFile(cacheFile, JSON.stringify(payload), "utf8");
