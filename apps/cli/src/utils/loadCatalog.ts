@@ -8,7 +8,9 @@ export function resolveCatalog(catalogPath?: string, rootPath?: string): ModelCa
   if (catalogPath) {
     if (!existsSync(catalogPath)) throw new CliError(`Catalog path does not exist: ${catalogPath}`);
     try {
-      return validateLoadedCatalog(loadModelCatalog(catalogPath), catalogPath);
+      // Strict: missing models.json under an explicit dir, corrupt JSON, or
+      // permission errors must surface as CliError, not an empty catalog.
+      return validateLoadedCatalog(loadModelCatalog(catalogPath, { strict: true }), catalogPath);
     } catch (error) {
       if (error instanceof CliError) throw error;
       throw new CliError(`Failed to load model catalog at ${catalogPath}: ${errorMessage(error)}`);
@@ -19,6 +21,7 @@ export function resolveCatalog(catalogPath?: string, rootPath?: string): ModelCa
     for (const cp of candidates) {
       // A corrupt or unreadable workspace candidate must not kill the CLI:
       // skip it and fall through to the next candidate / bundled catalog.
+      // Missing candidates return empty (non-strict) and are skipped via length check.
       try {
         const cat = loadModelCatalog(cp);
         if (cat.models.length > 0) return validateLoadedCatalog(cat, cp);
@@ -27,9 +30,10 @@ export function resolveCatalog(catalogPath?: string, rootPath?: string): ModelCa
       }
     }
   }
-  // fallback: try default bundled catalogs directory
+  // fallback: try default bundled catalogs directory (strict — a missing or
+  // broken bundled catalog is a load failure, not an empty result).
   try {
-    return validateLoadedCatalog(loadModelCatalog("catalogs"), "catalogs/models.json");
+    return validateLoadedCatalog(loadModelCatalog("catalogs", { strict: true }), "catalogs/models.json");
   } catch (error) {
     if (error instanceof CliError) throw error;
     throw new CliError(`Failed to load model catalog at catalogs/models.json: ${errorMessage(error)}`);
